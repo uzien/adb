@@ -21,34 +21,43 @@ export default async function handler(req, res) {
 
   const chatId = message.chat.id;
   const text = message.text.trim();
-
-  // Check if user is admin
-  if (!ADMIN_IDS.includes(chatId.toString())) {
-    await sendMessage(chatId, "⚠️ Siz admin emassiz!");
-    return res.status(200).json({ ok: true });
-  }
+  const isAdmin = ADMIN_IDS.includes(chatId.toString());
 
   // Handle /start command
   if (text === '/start') {
-    await sendMessage(chatId, 
-      `🤖 *ADU Litsey Admin Bot*\n\n` +
-      `*Buyruqlar:*\n` +
-      `/news - Yangilik qo'shish\n` +
-      `/list - Yangiliklarni ko'rish\n` +
-      `/publish [id] - Yangilikni nashr qilish\n` +
-      `/help - Yordam`
-    );
+    if (isAdmin) {
+      await sendMessage(chatId, 
+        `🤖 *ADU Litsey Admin Bot*\n\n` +
+        `*Admin Buyruqlar:*\n` +
+        `/news - Yangilik qo'shish\n` +
+        `/list - Yangiliklarni ko'rish\n` +
+        `/publish [id] - Yangilikni nashr qilish\n` +
+        `/help - Yordam`
+      );
+    } else {
+      await sendMessage(chatId, 
+        `Assalomu alaykum! Bu ADU Litseyning admin boti. ` +
+        `Agar siz admin bo'lsangiz, iltimos adminlar bilan bog'laning.`
+      );
+    }
+    return res.status(200).json({ ok: true });
   }
 
-  // Handle /news command
-  else if (text.startsWith('/news')) {
+  // If not admin and trying to use admin commands
+  if (!isAdmin) {
+    await sendMessage(chatId, "⚠️ Siz admin emassiz! Bu bot faqat adminlar uchun.");
+    return res.status(200).json({ ok: true });
+  }
+
+  // Handle /news command (admin only)
+  if (text.startsWith('/news')) {
     const parts = text.split('|').map(p => p.trim());
     if (parts.length < 3) {
       await sendMessage(chatId, 
         "📝 *Format:*\n" +
         "`/news Sarlavha|Matn|Rasm URL (ixtiyoriy)`\n\n" +
         "*Misol:*\n" +
-        "`/news Yangi laboratoriya|Bugun yangi...|https://image.url`"
+        "`/news Yangi laboratoriya|Bugun yangi laboratoriya ochildi...|https://image.url`"
       );
     } else {
       const title = parts[0].replace('/news ', '');
@@ -62,7 +71,8 @@ export default async function handler(req, res) {
           content: content,
           excerpt: content.substring(0, 150) + '...',
           image_url: imageUrl,
-          status: 'draft'
+          status: 'draft',
+          language: 'uz'
         }]);
 
       if (error) {
@@ -71,7 +81,7 @@ export default async function handler(req, res) {
         await sendMessage(chatId, 
           `✅ *Yangi yangilik qo'shildi!*\n\n` +
           `*Sarlavha:* ${title}\n` +
-          `*ID:* ${data[0].id}\n\n` +
+          `*ID:* \`${data[0].id}\`\n\n` +
           `Nashr qilish uchun:\n` +
           `\`/publish ${data[0].id}\``
         );
@@ -79,27 +89,30 @@ export default async function handler(req, res) {
     }
   }
 
-  // Handle /list command
+  // Handle /list command (admin only)
   else if (text === '/list') {
     const { data } = await supabase
       .from('news_posts')
-      .select('id, title, status')
+      .select('id, title, status, created_at')
       .order('created_at', { ascending: false })
       .limit(10);
 
     if (!data || data.length === 0) {
       await sendMessage(chatId, "📭 Yangiliklar topilmadi.");
     } else {
-      let message = "📋 *Yangi yangiliklar:*\n\n";
+      let messageText = "📋 *Yangi yangiliklar:*\n\n";
       data.forEach((item, index) => {
-        message += `${index + 1}. ${item.title} (${item.status})\n`;
-        message += `   ID: \`${item.id}\`\n\n`;
+        const date = new Date(item.created_at).toLocaleDateString('uz-UZ');
+        messageText += `${index + 1}. ${item.title}\n`;
+        messageText += `   Status: ${item.status}\n`;
+        messageText += `   ID: \`${item.id}\`\n`;
+        messageText += `   Sana: ${date}\n\n`;
       });
-      await sendMessage(chatId, message);
+      await sendMessage(chatId, messageText);
     }
   }
 
-  // Handle /publish command
+  // Handle /publish command (admin only)
   else if (text.startsWith('/publish')) {
     const id = text.replace('/publish ', '').trim();
     
@@ -117,10 +130,26 @@ export default async function handler(req, res) {
     } else {
       await sendMessage(chatId, 
         `🎉 *Yangilik nashr qilindi!*\n\n` +
-        `*${data[0].title}*\n` +
-        `Vebsaytda ko'rish mumkin.`
+        `*${data[0].title}*\n\n` +
+        `Endi vebsaytda ko'rish mumkin: \n` +
+        `https://adulitsey.netlify.app`
       );
     }
+  }
+
+  // Handle /help command (admin only)
+  else if (text === '/help') {
+    await sendMessage(chatId, 
+      `🤖 *ADU Litsey Admin Bot*\n\n` +
+      `*Buyruqlar:*\n` +
+      `/news - Yangilik qo'shish\n` +
+      `/list - Yangiliklarni ko'rish\n` +
+      `/publish [id] - Yangilikni nashr qilish\n` +
+      `/help - Yordam\n\n` +
+      `*Format:*\n` +
+      `\`/news Sarlavha|Matn|Rasm URL\`\n` +
+      `\`/publish yangilik_id\``
+    );
   }
 
   return res.status(200).json({ ok: true });
